@@ -21,6 +21,9 @@ struct CoretextView: ParsableCommand {
     @Option(name: .customLong("variations"), help: "Comma-separated list of font variations")
     var fontVariations: String?
 
+    @Option(name: .customLong("features"), help: "Comma-separated list of font opentype features")
+    var fontFeatures: String?
+
     @Option(name: [.customShort("o"), .customLong("output-file")], help: "Set output file-name")
     var outputFile: String = "out.pdf"
 
@@ -44,31 +47,32 @@ struct CoretextView: ParsableCommand {
         guard let font = Self.createCTFont(fromFileURL: fileURL, size: CGFloat(fontSize)) else {
             throw ValidationError("Failed to load font from \(fileURL.path)")
         }
-
-        let variationDict = Self.parseVariations(variationsString: fontVariations)
-        let atrs: [CFString: Any] = [
-            kCTFontVariationAttribute: variationDict
+        let fontAttributes: [CFString: Any] = [
+            kCTFontVariationAttribute:  Self.parseVariations(variationsString: fontVariations),
+            kCTFontFeatureSettingsAttribute: Self.parseFeatures(featuresString: fontFeatures),
         ]
-        let descriptor = CTFontDescriptorCreateWithAttributes(atrs as CFDictionary)
+        let descriptor = CTFontDescriptorCreateWithAttributes(fontAttributes as CFDictionary)
         let varFont = CTFontCreateCopyWithAttributes(font, 0.0, nil, descriptor)
 
-        let attributes: [NSAttributedString.Key: Any] = [
+        let stringAttributes: [NSAttributedString.Key: Any] = [
             .font: varFont,
             .foregroundColor: CGColor(red: 0, green: 0, blue: 0, alpha: 1),
         ]
-
-        let attributedString = NSAttributedString(string: text, attributes: attributes)
-        let framesetter = CTFramesetterCreateWithAttributedString(attributedString as CFAttributedString)
-
-        let constraints = CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
-        let suggestedSize = CTFramesetterSuggestFrameSizeWithConstraints(framesetter, CFRangeMake(0, 0), nil, constraints, nil)
+        let attributedString = NSAttributedString(string: text, attributes: stringAttributes)
+        let framesetter = CTFramesetterCreateWithAttributedString(
+            attributedString as CFAttributedString)
+        let constraints = CGSize(
+            width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        let suggestedSize = CTFramesetterSuggestFrameSizeWithConstraints(
+            framesetter, CFRangeMake(0, 0), nil, constraints, nil)
         let pageSize = CGSize(width: ceil(suggestedSize.width), height: ceil(suggestedSize.height))
 
         let textPath = CGMutablePath()
         let textRect = CGRect(origin: .zero, size: pageSize)
         textPath.addRect(textRect)
 
-        let frame = CTFramesetterCreateFrame(framesetter, CFRangeMake(0, attributedString.length), textPath, nil)
+        let frame = CTFramesetterCreateFrame(
+            framesetter, CFRangeMake(0, attributedString.length), textPath, nil)
 
         var mediaBox = CGRect(origin: .zero, size: pageSize)
         guard let pdfContext = CGContext(outURL as CFURL, mediaBox: &mediaBox, nil) else {
@@ -93,11 +97,29 @@ struct CoretextView: ParsableCommand {
                     let kv = pair.split(separator: "=", maxSplits: 1)
                     guard kv.count == 2 else { return nil }
                     let tag = String(kv[0]).trimmingCharacters(in: .whitespaces)
-                    guard let value = Double(String(kv[1]).trimmingCharacters(in: .whitespaces)) else { return nil }
+                    guard let value = Double(String(kv[1]).trimmingCharacters(in: .whitespaces))
+                    else { return nil }
                     return (NSNumber(value: Self.axisID(tag)), NSNumber(value: value))
                 },
             uniquingKeysWith: { _, last in last }
         )
+    }
+
+    static func parseFeatures(featuresString: String?) -> [[String: Any]] {
+        let featureTag = kCTFontOpenTypeFeatureTag as String
+        let featureValue = kCTFontOpenTypeFeatureValue as String
+
+        return (featuresString ?? "")
+            .split(separator: ",")
+            .compactMap { pair -> [String: Any]? in
+                let kv = pair.split(separator: "=", maxSplits: 1)
+                guard kv.count == 2 else { return nil }
+                let feature = String(kv[0]).trimmingCharacters(in: .whitespaces)
+                guard let value = Int(String(kv[1]).trimmingCharacters(in: .whitespaces)) else {
+                    return nil
+                }
+                return [featureTag: feature, featureValue: value]
+            }
     }
 
     static func axisID(_ tag: String) -> Int {
