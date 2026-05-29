@@ -18,6 +18,9 @@ struct CoretextView: ParsableCommand {
     @Option(name: .customLong("text"), help: "Set input text")
     var textOption: String?
 
+    @Option(name: .customLong("variations"), help: "Comma-separated list of font variations")
+    var fontVariations: String?
+
     @Option(name: [.customShort("o"), .customLong("output-file")], help: "Set output file-name")
     var outputFile: String = "out.pdf"
 
@@ -42,8 +45,15 @@ struct CoretextView: ParsableCommand {
             throw ValidationError("Failed to load font from \(fileURL.path)")
         }
 
+        let variationDict = Self.parseVariations(variationsString: fontVariations)
+        let atrs: [CFString: Any] = [
+            kCTFontVariationAttribute: variationDict
+        ]
+        let descriptor = CTFontDescriptorCreateWithAttributes(atrs as CFDictionary)
+        let varFont = CTFontCreateCopyWithAttributes(font, 0.0, nil, descriptor)
+
         let attributes: [NSAttributedString.Key: Any] = [
-            .font: font,
+            .font: varFont,
             .foregroundColor: CGColor(red: 0, green: 0, blue: 0, alpha: 1),
         ]
 
@@ -73,6 +83,25 @@ struct CoretextView: ParsableCommand {
         pdfContext.closePDF()
 
         print("Successfully wrote PDF to \(outURL.path)")
+    }
+
+    static func parseVariations(variationsString: String?) -> [NSNumber: NSNumber] {
+        Dictionary(
+            (variationsString ?? "")
+                .split(separator: ",")
+                .compactMap { pair -> (NSNumber, NSNumber)? in
+                    let kv = pair.split(separator: "=", maxSplits: 1)
+                    guard kv.count == 2 else { return nil }
+                    let tag = String(kv[0]).trimmingCharacters(in: .whitespaces)
+                    guard let value = Double(String(kv[1]).trimmingCharacters(in: .whitespaces)) else { return nil }
+                    return (NSNumber(value: Self.axisID(tag)), NSNumber(value: value))
+                },
+            uniquingKeysWith: { _, last in last }
+        )
+    }
+
+    static func axisID(_ tag: String) -> Int {
+        tag.utf8.reduce(0) { ($0 << 8) | Int($1) }
     }
 
     static func createCTFont(fromFileURL url: URL, size: CGFloat) -> CTFont? {
