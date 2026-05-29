@@ -1,5 +1,5 @@
 # coretext-view
-View text with given font using CoreText API. 
+View text with given font using CoreText API, similar to `hb-view`.
 
-### build
-swift build -c release && .build/release/coretext-view --help
+### build and run
+`swift build -c release && .build/release/coretext-view --help`
