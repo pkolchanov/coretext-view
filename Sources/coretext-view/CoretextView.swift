@@ -19,10 +19,14 @@ struct CoretextView: ParsableCommand {
     @Option(name: .customLong("text"), help: "Set input text")
     var textOption: String?
 
-    @Option(name: .customLong("variations"), help: "Comma-separated list of font variations")
+    @Option(
+        name: .customLong("variations"),
+        help: "Comma-separated list of font variations.\nFor example \"wght=400,wdth=0\"")
     var fontVariations: String?
 
-    @Option(name: .customLong("features"), help: "Comma-separated list of font opentype features")
+    @Option(
+        name: .customLong("features"),
+        help: "Comma-separated list of font opentype features.\n\nSyntax:\tValue:\n\"liga\"\t1\t# Turn feature on\n\"+liga\"\t1\t# Turn feature on\n\"-liga\"\t0\t# Turn feature off\n\"liga=1\"\t1\t# Turn feature on\n\"liga=0\"\t0\t# Turn feature off\n")
     var fontFeatures: String?
 
     @Option(name: [.customShort("o"), .customLong("output-file")], help: "Set output file-name")
@@ -49,7 +53,7 @@ struct CoretextView: ParsableCommand {
             throw ValidationError("Failed to load font from \(fileURL.path)")
         }
         let fontAttributes: [CFString: Any] = [
-            kCTFontVariationAttribute:  Self.parseVariations(variationsString: fontVariations),
+            kCTFontVariationAttribute: Self.parseVariations(variationsString: fontVariations),
             kCTFontFeatureSettingsAttribute: Self.parseFeatures(featuresString: fontFeatures),
         ]
         let descriptor = CTFontDescriptorCreateWithAttributes(fontAttributes as CFDictionary)
@@ -80,7 +84,7 @@ struct CoretextView: ParsableCommand {
     }
 
     static func exportPDF(outURL: URL, frame: CTFrame, mediaBox: CGRect) throws {
-        var mediaBox = mediaBox;
+        var mediaBox = mediaBox
         guard let pdfContext = CGContext(outURL as CFURL, mediaBox: &mediaBox, nil) else {
             throw ValidationError("Failed to create PDF context at \(outURL.path)")
         }
@@ -95,30 +99,32 @@ struct CoretextView: ParsableCommand {
         print("Successfully wrote PDF to \(outURL.path)")
     }
 
-    static func export(outURL: URL, frame: CTFrame, mediaBox: CGRect) throws{
+    static func export(outURL: URL, frame: CTFrame, mediaBox: CGRect) throws {
         guard let type = UTType(filenameExtension: outURL.pathExtension) else {
             throw ValidationError("Unknown output extention")
         }
-        switch(type){
-            case _ where type.conforms(to: .pdf):
-                try Self.exportPDF(outURL: outURL, frame: frame, mediaBox: mediaBox)
-            case _ where type.conforms(to: .image):
-                try Self.exportImage(outURL: outURL, frame: frame, mediaBox: mediaBox)
-            default:
-                throw ValidationError("Unknown output extention")
+        switch type {
+        case _ where type.conforms(to: .pdf):
+            try Self.exportPDF(outURL: outURL, frame: frame, mediaBox: mediaBox)
+        case _ where type.conforms(to: .image):
+            try Self.exportImage(outURL: outURL, frame: frame, mediaBox: mediaBox)
+        default:
+            throw ValidationError("Unknown output extention")
         }
     }
 
     static func exportImage(outURL: URL, frame: CTFrame, mediaBox: CGRect) throws {
-        guard let context = CGContext(
-            data: nil,
-            width:  Int(mediaBox.width),
-            height: Int(mediaBox.height),
-            bitsPerComponent: 8,
-            bytesPerRow: 0,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else {
+        guard
+            let context = CGContext(
+                data: nil,
+                width: Int(mediaBox.width),
+                height: Int(mediaBox.height),
+                bitsPerComponent: 8,
+                bytesPerRow: 0,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            )
+        else {
             throw ValidationError("Failed to create bitmap context")
         }
 
@@ -131,7 +137,7 @@ struct CoretextView: ParsableCommand {
         }
 
         guard let type: UTType = UTType(filenameExtension: outURL.pathExtension),
-              let dest = CGImageDestinationCreateWithURL(
+            let dest = CGImageDestinationCreateWithURL(
                 outURL as CFURL, type.identifier as CFString, 1, nil)
         else {
             throw ValidationError("Unsupported image format: \(outURL.pathExtension)")
@@ -166,15 +172,28 @@ struct CoretextView: ParsableCommand {
 
         return (featuresString ?? "")
             .split(separator: ",")
-            .compactMap { pair -> [String: Any]? in
-                let kv = pair.split(separator: "=", maxSplits: 1)
-                guard kv.count == 2 else { return nil }
-                let feature = String(kv[0]).trimmingCharacters(in: .whitespaces)
-                guard let value = Int(String(kv[1]).trimmingCharacters(in: .whitespaces)) else {
-                    return nil
+            .compactMap { token -> (tag: String, value: Int)? in
+                let token = token.trimmingCharacters(in: .whitespaces)
+
+                if token.contains("=") {
+                    let kv = token.split(separator: "=", maxSplits: 1)
+                    guard kv.count == 2 else { return nil }
+                    let tag = String(kv[0]).trimmingCharacters(in: .whitespaces)
+                    guard let value = Int(String(kv[1]).trimmingCharacters(in: .whitespaces)) else {
+                        return nil
+                    }
+                    return (tag, value)
                 }
-                return [featureTag: feature, featureValue: value]
+
+                if token.hasPrefix("+") {
+                    return (String(token.dropFirst()), 1)
+                }
+                if token.hasPrefix("-") {
+                    return (String(token.dropFirst()), 0)
+                }
+                return (token, 1)
             }
+            .map { [featureTag: $0.tag, featureValue: $0.value] }
     }
 
     static func axisID(_ tag: String) -> Int {
