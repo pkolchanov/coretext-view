@@ -29,6 +29,11 @@ struct CoretextView: ParsableCommand {
         help: "Comma-separated list of font opentype features.\n\nSyntax:\tValue:\n\"liga\"\t1\t# Turn feature on\n\"+liga\"\t1\t# Turn feature on\n\"-liga\"\t0\t# Turn feature off\n\"liga=1\"\t1\t# Turn feature on\n\"liga=0\"\t0\t# Turn feature off\n")
     var fontFeatures: String?
 
+    @Option(
+        name: .customLong("language"),
+        help: "Set text language using BCP 47 tag")
+    var language: String?
+
     @Option(name: [.customShort("o"), .customLong("output-file")], help: "Set output file-name")
     var outputFile: String = "out.pdf"
 
@@ -59,10 +64,13 @@ struct CoretextView: ParsableCommand {
         let descriptor = CTFontDescriptorCreateWithAttributes(fontAttributes as CFDictionary)
         let varFont = CTFontCreateCopyWithAttributes(font, 0.0, nil, descriptor)
 
-        let stringAttributes: [NSAttributedString.Key: Any] = [
+        var stringAttributes: [NSAttributedString.Key: Any] = [
             .font: varFont,
             .foregroundColor: CGColor(red: 0, green: 0, blue: 0, alpha: 1),
         ]
+        if let language = language {
+            stringAttributes[NSAttributedString.Key(kCTLanguageAttributeName as String)] = language
+        }
         let attributedString = NSAttributedString(string: text, attributes: stringAttributes)
         let framesetter = CTFramesetterCreateWithAttributedString(
             attributedString as CFAttributedString)
