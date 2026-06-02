@@ -47,7 +47,12 @@ struct CoretextView: ParsableCommand {
         guard let fontFile = fontFileOption ?? fontFileArgument else {
             throw ValidationError("No font file")
         }
-        guard let text = textOption ?? textArgument else {
+
+        let stdinText = textOption == nil && textArgument == nil
+            ? String(data: FileHandle.standardInput.readDataToEndOfFile(), encoding: .utf8)
+            : nil
+
+        guard let text = textOption ?? textArgument ?? stdinText else {
             throw ValidationError("No input text")
         }
 
