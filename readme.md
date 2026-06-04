@@ -3,7 +3,9 @@ View text with a given font using CoreText API, similar to `hb-view`.
 
 ### build and run
 `swift build -c release && .build/release/coretext-view --help`
+
 or use Homebrew
+
 `brew install pkolchanov/tap/coretext-view`
 
 ```
