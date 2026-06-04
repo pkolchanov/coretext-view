@@ -19,6 +19,9 @@ struct CoretextView: ParsableCommand {
     @Option(name: .customLong("text"), help: "Set input text")
     var textOption: String?
 
+    @Option(name: .customLong("unicodes"), help: "Set input Unicode codepoints")
+    var unicodes: String?
+
     @Option(
         name: .customLong("variations"),
         help: "Comma-separated list of font variations.\nFor example \"wght=400,wdth=0\"")
@@ -26,7 +29,9 @@ struct CoretextView: ParsableCommand {
 
     @Option(
         name: .customLong("features"),
-        help: "Comma-separated list of font opentype features.\n\nSyntax:\tValue:\n\"liga\"\t1\t# Turn feature on\n\"+liga\"\t1\t# Turn feature on\n\"-liga\"\t0\t# Turn feature off\n\"liga=1\"\t1\t# Turn feature on\n\"liga=0\"\t0\t# Turn feature off\n")
+        help:
+            "Comma-separated list of font opentype features.\n\nSyntax:\tValue:\n\"liga\"\t1\t# Turn feature on\n\"+liga\"\t1\t# Turn feature on\n\"-liga\"\t0\t# Turn feature off\n\"liga=1\"\t1\t# Turn feature on\n\"liga=0\"\t0\t# Turn feature off\n"
+    )
     var fontFeatures: String?
 
     @Option(
@@ -48,11 +53,15 @@ struct CoretextView: ParsableCommand {
             throw ValidationError("No font file")
         }
 
-        let stdinText = textOption == nil && textArgument == nil
+        let stdinText =
+            textOption == nil && textArgument == nil && unicodes == nil
             ? String(data: FileHandle.standardInput.readDataToEndOfFile(), encoding: .utf8)
             : nil
 
-        guard let text = textOption ?? textArgument ?? stdinText else {
+        guard
+            let text = textOption ?? textArgument ?? stdinText
+                ?? (unicodes != nil ? Self.encodeUnicodes(unicodeString: unicodes!) : nil)
+        else {
             throw ValidationError("No input text")
         }
 
@@ -219,5 +228,25 @@ struct CoretextView: ParsableCommand {
         guard let dataProvider = CGDataProvider(data: fontData as CFData) else { return nil }
         guard let cgFont = CGFont(dataProvider) else { return nil }
         return CTFontCreateWithGraphicsFont(cgFont, size, nil, nil)
+    }
+
+    static func encodeUnicodes(unicodeString: String) -> String {
+        let delimiters = CharacterSet(charactersIn: "<+-|>{},;&#\\xXuUnNiI \n\t\u{0B}\u{0C}\r")
+        var result = String.UnicodeScalarView()
+
+        let scanner = Scanner(string: unicodeString)
+        scanner.charactersToBeSkipped = delimiters
+
+        while !scanner.isAtEnd {
+            var value: UInt64 = 0
+            guard scanner.scanHexInt64(&value),
+                let u32 = UInt32(exactly: value),
+                let scalar = Unicode.Scalar(u32)
+            else { break }
+
+            result.append(scalar)
+        }
+
+        return String(result)
     }
 }
